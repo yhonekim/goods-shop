@@ -4,11 +4,56 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>굿즈 샵</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>굿즈 샵</h1>
-  <p>준비 중입니다.</p>
+  <header class="header" id="header"></header>
 
+  <main class="container">
+    <h1 class="page-title">상품</h1>
+    <p class="page-desc">마음에 드는 상품을 골라보세요.</p>
+    <div id="message"></div>
+    <div class="grid" id="product-grid"></div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
+  <script src="common.js"></script>
+  <script>
+    async function loadProducts() {
+      renderHeader("index.html");
+
+      // 상품은 로그인 없이도 볼 수 있다 (DB 정책에서 전체 공개로 설정).
+      const { data: products, error } = await db
+        .from("products")
+        .select("id, name, image_url, price")
+        .order("id");
+
+      const grid = document.getElementById("product-grid");
+      const message = document.getElementById("message");
+
+      if (error) {
+        message.innerHTML =
+          `<div class="notice notice-error">상품을 불러오지 못했습니다: ${safe(error.message)}</div>`;
+        return;
+      }
+      if (!products.length) {
+        grid.innerHTML = `<p class="empty">등록된 상품이 없습니다.</p>`;
+        return;
+      }
+
+      grid.innerHTML = products.map((product) => `
+        <a class="card" href="product.html?id=${product.id}">
+          <img class="card-image" src="${safe(product.image_url)}"
+               alt="${safe(product.name)}" loading="lazy">
+          <div class="card-body">
+            <p class="card-name">${safe(product.name)}</p>
+            <p class="card-price">${won(product.price)}</p>
+          </div>
+        </a>`).join("");
+    }
+
+    loadProducts();
+  </script>
 </body>
 </html>

@@ -1,0 +1,321 @@
+/* 굿즈 샵 공통 스타일.
+   모바일 우선으로 작성했다. 기본 규칙은 폰 기준이고, 화면이 넓어질 때만
+   미디어 쿼리로 열 수를 늘린다. */
+
+:root {
+  --bg: #ffffff;
+  --text: #191f28;
+  --text-weak: #8b95a1;
+  --line: #e5e8eb;
+  --point: #3182f6;
+  --point-dark: #1b64da;
+  --danger: #f04452;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic",
+    "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
+  line-height: 1.5;
+  /* 폰에서 가로 스크롤이 생기지 않게 */
+  overflow-x: hidden;
+}
+
+/* 본문 폭. PC 에서 글이 과하게 늘어지지 않도록 제한한다. */
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* ---------- 헤더 ---------- */
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.95);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+}
+
+.header-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 56px;
+}
+
+.logo {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+  margin-right: auto;
+  /* 터치 영역 확보 */
+  padding: 12px 4px;
+}
+
+/* 헤더 메뉴. 폰에서는 글자를 줄이되 터치 영역은 44px 이상 유지한다. */
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: 14px;
+  color: var(--text-weak);
+  text-decoration: none;
+  border-radius: 8px;
+}
+
+.nav-link:hover { color: var(--text); background: #f2f4f6; }
+.nav-link.active { color: var(--point); font-weight: 600; }
+
+/* ---------- 상품 목록 ---------- */
+
+.page-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 8px 0 4px;
+}
+
+.page-desc {
+  color: var(--text-weak);
+  font-size: 14px;
+  margin: 0 0 20px;
+}
+
+/* 폰 2열 → 태블릿 3열 → PC 4열 */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (min-width: 600px) {
+  .grid { grid-template-columns: repeat(3, 1fr); gap: 16px; }
+}
+
+@media (min-width: 900px) {
+  .grid { grid-template-columns: repeat(4, 1fr); gap: 20px; }
+}
+
+.card {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #fff;
+}
+
+.card:active { transform: scale(0.98); }
+
+/* 이미지 비율을 고정해 로딩 중에도 화면이 덜컥거리지 않게 한다. */
+.card-image {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  display: block;
+  background: #f2f4f6;
+}
+
+.card-body { padding: 10px 12px 14px; }
+
+.card-name {
+  font-size: 13px;
+  margin: 0 0 6px;
+  /* 상품명이 길어도 두 줄까지만 보이게 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-price { font-size: 15px; font-weight: 700; }
+
+@media (min-width: 600px) {
+  .card-name { font-size: 14px; }
+  .card-price { font-size: 16px; }
+}
+
+/* ---------- 상품 상세 ---------- */
+
+/* 폰에서는 위아래, PC 에서는 좌우로 배치 */
+.detail {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+@media (min-width: 760px) {
+  .detail { grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+}
+
+.detail-image {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: #f2f4f6;
+}
+
+.detail-name { font-size: 20px; font-weight: 700; margin: 0 0 8px; }
+.detail-desc { color: var(--text-weak); font-size: 14px; margin: 0 0 16px; }
+.detail-price { font-size: 26px; font-weight: 700; margin: 0 0 20px; }
+
+/* ---------- 버튼 / 입력 ---------- */
+
+.button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 52px;          /* 폰 터치 영역 */
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--point);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+}
+
+.button:hover { background: var(--point-dark); }
+.button:disabled { background: #c6d3e8; cursor: default; }
+
+.button-line {
+  background: #fff;
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+
+.button-line:hover { background: #f2f4f6; }
+
+.field { margin-bottom: 12px; }
+
+.field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.field input {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  /* 16px 미만이면 iOS 에서 입력할 때 화면이 자동 확대된다. */
+  font-size: 16px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--text);
+}
+
+.field input:focus { outline: 2px solid var(--point); border-color: var(--point); }
+
+/* ---------- 로그인 화면 ---------- */
+
+.auth-box {
+  max-width: 400px;
+  margin: 24px auto;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  background: #f2f4f6;
+  padding: 4px;
+  border-radius: var(--radius);
+}
+
+.tab {
+  flex: 1;
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-weak);
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.tab.active { background: #fff; color: var(--text); }
+
+/* ---------- 결제 내역 표 ---------- */
+
+/* 폰에서는 표 대신 카드 형태로 쌓는다. 표를 옆으로 스크롤하게 하면 읽기 불편하다. */
+.order-list { display: grid; gap: 10px; }
+
+.order {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+
+.order-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.order-name { font-size: 15px; font-weight: 600; }
+.order-amount { font-size: 15px; font-weight: 700; white-space: nowrap; }
+.order-meta { font-size: 12px; color: var(--text-weak); }
+
+/* 관리자 화면에서 구매자 표시 */
+.order-buyer {
+  font-size: 12px;
+  color: var(--point);
+  background: #e8f3ff;
+  border-radius: 6px;
+  padding: 2px 8px;
+  display: inline-block;
+  margin-top: 6px;
+  word-break: break-all;
+}
+
+/* ---------- 상태 표시 ---------- */
+
+.notice {
+  padding: 14px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.notice-error { background: #fff0f0; color: var(--danger); }
+.notice-info { background: #f2f4f6; color: var(--text-weak); }
+
+.empty {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--text-weak);
+  font-size: 14px;
+}
+
+.center-box { max-width: 400px; margin: 40px auto; text-align: center; }
+.center-box h1 { font-size: 22px; margin: 0 0 8px; }
+.center-box p { color: var(--text-weak); font-size: 14px; margin: 0 0 24px; }
+
+.result-amount { font-size: 28px; font-weight: 700; margin: 16px 0 4px; }
+
+.stack { display: grid; gap: 10px; }

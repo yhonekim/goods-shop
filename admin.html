@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>관리자 · 굿즈 샵</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header" id="header"></header>
+
+  <main class="container">
+    <h1 class="page-title">전체 결제내역</h1>
+    <p class="page-desc" id="summary">관리자만 모든 사람의 결제내역을 볼 수 있습니다.</p>
+    <div id="message"></div>
+    <div class="order-list" id="order-list"></div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="common.js"></script>
+  <script>
+    async function main() {
+      await renderHeader("admin.html");
+
+      const user = await requireLogin();
+      if (!user) return;
+
+      const message = document.getElementById("message");
+      const list = document.getElementById("order-list");
+
+      // 관리자가 아닌 사람이 이 주소로 들어올 수도 있다.
+      // 화면에서 숨기는 것은 안내 목적일 뿐이고, 실제 차단은 DB 정책(RLS)이 한다.
+      // 관리자가 아니면 아래 조회 결과가 "본인 주문"으로만 제한된다.
+      if (user.email !== ADMIN_EMAIL) {
+        message.innerHTML = `<div class="notice notice-info">
+          관리자 계정이 아닙니다. 전체 내역은 볼 수 없습니다.
+        </div>`;
+      }
+
+      const { data: orders, error } = await db
+        .from("orders")
+        .select("product_name, amount, user_email, toss_order_id, created_at")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        message.innerHTML +=
+          `<div class="notice notice-error">불러오지 못했습니다: ${safe(error.message)}</div>`;
+        return;
+      }
+      if (!orders.length) {
+        list.innerHTML = `<p class="empty">결제내역이 없습니다.</p>`;
+        return;
+      }
+
+      const total = orders.reduce((sum, order) => sum + order.amount, 0);
+      document.getElementById("summary").textContent =
+        `${orders.length}건 · 합계 ${won(total)}`;
+
+      list.innerHTML = orders.map((order) => `
+        <div class="order">
+          <div class="order-top">
+            <span class="order-name">${safe(order.product_name)}</span>
+            <span class="order-amount">${won(order.amount)}</span>
+          </div>
+          <div class="order-meta">${dateText(order.created_at)}</div>
+          <div class="order-meta">주문번호 ${safe(order.toss_order_id)}</div>
+          <span class="order-buyer">${safe(order.user_email ?? "이메일 없음")}</span>
+        </div>`).join("");
+    }
+
+    main();
+  </script>
+</body>
+</html>

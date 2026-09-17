@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>로그인 · 굿즈 샵</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header" id="header"></header>
+
+  <main class="container">
+    <div class="auth-box">
+      <div class="tabs">
+        <button class="tab active" id="tab-login" type="button">로그인</button>
+        <button class="tab" id="tab-signup" type="button">회원가입</button>
+      </div>
+
+      <div id="message"></div>
+
+      <form id="auth-form">
+        <div class="field">
+          <label for="email">이메일</label>
+          <input type="email" id="email" autocomplete="email"
+                 placeholder="you@example.com" required>
+        </div>
+        <div class="field">
+          <label for="password">비밀번호</label>
+          <input type="password" id="password" autocomplete="current-password"
+                 placeholder="6자 이상" minlength="6" required>
+        </div>
+        <button class="button" id="submit-button" type="submit">로그인</button>
+      </form>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="common.js"></script>
+  <script>
+    let mode = "login"; // "login" 또는 "signup"
+
+    const message = document.getElementById("message");
+    const submitButton = document.getElementById("submit-button");
+    const tabLogin = document.getElementById("tab-login");
+    const tabSignup = document.getElementById("tab-signup");
+
+    // 로그인 후 돌아갈 주소. 없으면 상품 목록으로 간다.
+    function nextPage() {
+      const next = new URLSearchParams(location.search).get("next");
+      // 외부 주소로 튕기지 않게 같은 폴더 안의 경로만 허용한다.
+      if (next && !next.startsWith("http") && !next.startsWith("//")) return next;
+      return "index.html";
+    }
+
+    function setMode(newMode) {
+      mode = newMode;
+      const isLogin = mode === "login";
+      tabLogin.classList.toggle("active", isLogin);
+      tabSignup.classList.toggle("active", !isLogin);
+      submitButton.textContent = isLogin ? "로그인" : "회원가입";
+      document.getElementById("password").autocomplete =
+        isLogin ? "current-password" : "new-password";
+      message.innerHTML = "";
+    }
+
+    tabLogin.addEventListener("click", () => setMode("login"));
+    tabSignup.addEventListener("click", () => setMode("signup"));
+
+    document.getElementById("auth-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      submitButton.disabled = true;
+      submitButton.textContent = "잠시만요...";
+      message.innerHTML = "";
+
+      const { data, error } = mode === "login"
+        ? await db.auth.signInWithPassword({ email, password })
+        : await db.auth.signUp({ email, password });
+
+      submitButton.disabled = false;
+      setMode(mode);
+
+      if (error) {
+        message.innerHTML =
+          `<div class="notice notice-error">${safe(error.message)}</div>`;
+        return;
+      }
+
+      // 회원가입 직후 바로 로그인 상태가 되려면 Supabase 의 이메일 인증이 꺼져 있어야 한다.
+      // 켜져 있으면 session 이 비어 있으므로 안내를 보여준다.
+      if (!data.session) {
+        message.innerHTML = `<div class="notice notice-info">
+          가입은 됐지만 자동 로그인되지 않았습니다.
+          Supabase 설정에서 이메일 인증(Confirm email)이 켜져 있는지 확인해주세요.
+        </div>`;
+        return;
+      }
+
+      location.replace(nextPage());
+    });
+
+    // 이미 로그인한 상태로 들어왔으면 그냥 통과시킨다.
+    (async () => {
+      const user = await renderHeader("login.html");
+      if (user) location.replace(nextPage());
+    })();
+  </script>
+</body>
+</html>

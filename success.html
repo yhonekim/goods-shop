@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>결제 완료 · 굿즈 샵</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header" id="header"></header>
+
+  <main class="container">
+    <div class="center-box" id="box">
+      <h1 id="title">결제를 확인하고 있어요</h1>
+      <p id="desc">잠시만 기다려주세요.</p>
+      <div id="detail"></div>
+      <div class="stack" id="actions" hidden>
+        <a class="button" href="orders.html">내 결제내역 보기</a>
+        <a class="button button-line" href="index.html">계속 쇼핑하기</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="common.js"></script>
+  <script>
+    const title = document.getElementById("title");
+    const desc = document.getElementById("desc");
+    const detail = document.getElementById("detail");
+
+    function finish(headline, explanation, extraHtml = "") {
+      title.textContent = headline;
+      desc.textContent = explanation;
+      detail.innerHTML = extraHtml;
+      document.getElementById("actions").hidden = false;
+    }
+
+    async function main() {
+      await renderHeader("index.html");
+
+      const user = await requireLogin();
+      if (!user) return;
+
+      const params = new URLSearchParams(location.search);
+      const paymentKey = params.get("paymentKey");
+      const tossOrderId = params.get("orderId");
+
+      // 금액(amount)도 주소에 들어오지만 일부러 쓰지 않는다.
+      // 금액은 서버가 DB 에서 직접 가져와 확인한다.
+      if (!paymentKey || !tossOrderId) {
+        finish("결제 정보가 없습니다", "정상적인 경로로 들어왔는지 확인해주세요.");
+        return;
+      }
+
+      // 결제 승인은 시크릿 키가 필요하므로 서버(Edge Function)에서 처리한다.
+      const { data, error } = await db.functions.invoke("confirm-payment", {
+        body: { paymentKey, tossOrderId },
+      });
+
+      if (error) {
+        // 함수가 4xx/5xx 를 주면 본문에 이유가 담겨 있다.
+        let reason = error.message;
+        try {
+          reason = (await error.context.json()).error ?? reason;
+        } catch (_) { /* 본문을 읽을 수 없으면 원래 메시지를 쓴다 */ }
+        finish("결제 승인에 실패했습니다", reason);
+        return;
+      }
+
+      finish(
+        data.alreadyDone ? "이미 처리된 결제입니다" : "결제를 완료했어요",
+        data.alreadyDone ? "결제 내역에 정상적으로 남아 있습니다." : "구매해주셔서 감사합니다.",
+        `<p class="result-amount">${won(data.amount)}</p>
+         <p class="page-desc">${safe(data.productName)}</p>`,
+      );
+    }
+
+    main().catch((error) => finish("문제가 발생했습니다", error.message));
+  </script>
+</body>
+</html>

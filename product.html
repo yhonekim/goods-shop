@@ -19,37 +19,45 @@
         <p class="detail-desc" id="product-desc"></p>
         <p class="detail-price" id="product-price"></p>
 
-        <!-- 토스 결제위젯이 그려지는 자리 -->
-        <div id="payment-method"></div>
-        <div id="agreement"></div>
+        <div class="cart-item-actions">
+          <div class="qty">
+            <button class="qty-button" id="qty-minus" type="button"
+                    aria-label="수량 줄이기">−</button>
+            <span class="qty-value" id="qty-value">1</span>
+            <button class="qty-button" id="qty-plus" type="button"
+                    aria-label="수량 늘리기">+</button>
+          </div>
+          <span class="cart-item-total" id="line-total"></span>
+        </div>
 
-        <button class="button" id="pay-button" type="button" disabled>
-          불러오는 중...
-        </button>
+        <div class="stack" style="margin-top: 16px;">
+          <button class="button" id="buy-now" type="button">바로 구매</button>
+          <button class="button button-line" id="add-cart" type="button">장바구니 담기</button>
+        </div>
       </div>
     </div>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://js.tosspayments.com/v2/standard"></script>
   <script src="config.js"></script>
   <script src="common.js"></script>
+  <script src="cart.js"></script>
   <script>
     const message = document.getElementById("message");
-    const payButton = document.getElementById("pay-button");
 
     function showError(text) {
       message.innerHTML = `<div class="notice notice-error">${safe(text)}</div>`;
     }
 
+    function showInfo(text) {
+      message.innerHTML = `<div class="notice notice-info">${safe(text)}</div>`;
+    }
+
     async function main() {
       await renderHeader("index.html");
 
-      // 결제는 로그인한 사람만 할 수 있다.
-      // 로그인하지 않았으면 로그인 페이지로 보내고, 로그인 후 이 페이지로 돌아온다.
-      const user = await requireLogin();
-      if (!user) return;
-
+      // 상품 상세는 로그인 없이도 볼 수 있고, 장바구니에도 담을 수 있다.
+      // 로그인은 결제 단계(checkout.html)에서 요구한다.
       const productId = Number(new URLSearchParams(location.search).get("id"));
       if (!Number.isInteger(productId) || productId <= 0) {
         showError("상품 번호가 올바르지 않습니다.");
@@ -77,47 +85,45 @@
       document.getElementById("product-price").textContent = won(product.price);
       document.getElementById("detail").hidden = false;
 
-      // ---- 토스 결제위젯 준비 ----
-      const tossPayments = TossPayments(TOSS_CLIENT_KEY);
-      // customerKey 는 유추하기 어려운 값이어야 한다. 로그인 사용자의 고유 id 를 쓴다.
-      const widgets = tossPayments.widgets({ customerKey: user.id });
+      // ---- 수량 조절 ----
+      // 여기 금액은 안내용이다. 실제 청구 금액은 서버가 DB 가격으로 다시 계산한다.
+      let quantity = 1;
+      const MIN = 1, MAX = 99;
+      const qtyValue = document.getElementById("qty-value");
+      const minus = document.getElementById("qty-minus");
+      const plus = document.getElementById("qty-plus");
+      const lineTotal = document.getElementById("line-total");
 
-      // 금액 설정은 화면을 그리기 전에 먼저 해야 한다.
-      await widgets.setAmount({ currency: "KRW", value: product.price });
+      function drawQty() {
+        qtyValue.textContent = quantity;
+        lineTotal.textContent = won(product.price * quantity);
+        minus.disabled = quantity <= MIN;
+        plus.disabled = quantity >= MAX;
+      }
 
-      await Promise.all([
-        widgets.renderPaymentMethods({
-          selector: "#payment-method",
-          variantKey: "DEFAULT",
-        }),
-        widgets.renderAgreement({
-          selector: "#agreement",
-          variantKey: "AGREEMENT",
-        }),
-      ]);
+      minus.addEventListener("click", () => {
+        if (quantity > MIN) { quantity--; drawQty(); }
+      });
+      plus.addEventListener("click", () => {
+        if (quantity < MAX) { quantity++; drawQty(); }
+      });
+      drawQty();
 
-      payButton.disabled = false;
-      payButton.textContent = won(product.price) + " 결제하기";
+      // ---- 담기 / 바로 구매 ----
+      document.getElementById("add-cart").addEventListener("click", () => {
+        // 실제로 담긴 수량을 받아서 안내한다.
+        // 이미 99개가 들어 있으면 0 이 돌아온다.
+        const added = cartAdd(product.id, quantity);
+        refreshCartCount();
+        showInfo(added > 0
+          ? `장바구니에 담았습니다. (${added}개)`
+          : "이 상품은 이미 99개가 담겨 있어 더 담을 수 없습니다.");
+      });
 
-      payButton.addEventListener("click", async () => {
-        // 주문번호를 "<상품번호>-<임의의 UUID>" 로 만든다.
-        // 상품번호를 주문번호에 넣어두면, 결제 승인 단계에서 어떤 상품이었는지
-        // 브라우저 말을 믿지 않고 확인할 수 있다. 주문번호는 결제 시점에
-        // 토스에 등록되므로 나중에 다른 상품으로 바꿔치기할 수 없다.
-        const tossOrderId = product.id + "-" + crypto.randomUUID();
-
-        try {
-          await widgets.requestPayment({
-            orderId: tossOrderId,
-            orderName: product.name,
-            successUrl: pageUrl("success.html"),
-            failUrl: pageUrl("fail.html"),
-            customerEmail: user.email,
-          });
-        } catch (error) {
-          // 사용자가 결제창을 닫은 경우도 여기로 온다.
-          showError(error.message ?? "결제를 시작할 수 없습니다.");
-        }
+      document.getElementById("buy-now").addEventListener("click", () => {
+        // 장바구니를 거치지 않고 이 상품만 결제한다.
+        buyNowSet(product.id, quantity);
+        location.href = "checkout.html?mode=buynow";
       });
     }
 

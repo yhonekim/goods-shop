@@ -19,6 +19,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="common.js"></script>
+  <!-- 헤더의 장바구니 개수를 표시하려면 이 파일이 필요하다 -->
+  <script src="cart.js"></script>
   <script>
     async function main() {
       await renderHeader("admin.html");
@@ -38,9 +40,9 @@
         </div>`;
       }
 
-      const { data: orders, error } = await db
+      const { data: rows, error } = await db
         .from("orders")
-        .select("product_name, amount, user_email, toss_order_id, created_at")
+        .select("product_name, quantity, unit_price, amount, user_email, toss_order_id, created_at")
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -48,25 +50,38 @@
           `<div class="notice notice-error">불러오지 못했습니다: ${safe(error.message)}</div>`;
         return;
       }
-      if (!orders.length) {
+      if (!rows.length) {
         list.innerHTML = `<p class="empty">결제내역이 없습니다.</p>`;
         return;
       }
 
-      const total = orders.reduce((sum, order) => sum + order.amount, 0);
-      document.getElementById("summary").textContent =
-        `${orders.length}건 · 합계 ${won(total)}`;
+      // 한 주문에 여러 상품이 들어가므로 주문번호로 묶는다.
+      const orders = groupOrders(rows);
 
-      list.innerHTML = orders.map((order) => `
-        <div class="order">
-          <div class="order-top">
-            <span class="order-name">${safe(order.product_name)}</span>
-            <span class="order-amount">${won(order.amount)}</span>
-          </div>
-          <div class="order-meta">${dateText(order.created_at)}</div>
-          <div class="order-meta">주문번호 ${safe(order.toss_order_id)}</div>
-          <span class="order-buyer">${safe(order.user_email ?? "이메일 없음")}</span>
-        </div>`).join("");
+      // 합계는 줄 합계(amount)를 더한다. 낱개 가격을 더하면 틀린다.
+      const total = orders.reduce((sum, order) => sum + order.total, 0);
+      document.getElementById("summary").textContent =
+        `주문 ${orders.length}건 · 합계 ${won(total)}`;
+
+      list.innerHTML = orders.map((order) => {
+        const lines = order.lines.map((line) => `
+          <div class="order-item-line">
+            <span class="summary-name">${safe(line.product_name)} × ${line.quantity}</span>
+            <span class="summary-amount">${won(line.amount)}</span>
+          </div>`).join("");
+
+        return `
+          <div class="order">
+            <div class="order-top">
+              <span class="order-name">상품 ${order.lines.length}종</span>
+              <span class="order-amount">${won(order.total)}</span>
+            </div>
+            <div class="order-items">${lines}</div>
+            <div class="order-meta">${dateText(order.createdAt)}</div>
+            <div class="order-meta">주문번호 ${safe(order.tossOrderId)}</div>
+            <span class="order-buyer">${safe(order.userEmail ?? "이메일 없음")}</span>
+          </div>`;
+      }).join("");
     }
 
     main();

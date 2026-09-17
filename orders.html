@@ -19,6 +19,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="common.js"></script>
+  <!-- 헤더의 장바구니 개수를 표시하려면 이 파일이 필요하다 -->
+  <script src="cart.js"></script>
   <script>
     async function main() {
       await renderHeader("orders.html");
@@ -27,9 +29,9 @@
       if (!user) return;
 
       // 조건을 따로 걸지 않아도 DB 정책(RLS)이 본인 주문만 돌려준다.
-      const { data: orders, error } = await db
+      const { data: rows, error } = await db
         .from("orders")
-        .select("product_name, amount, toss_order_id, created_at")
+        .select("product_name, quantity, unit_price, amount, toss_order_id, created_at")
         .order("created_at", { ascending: false });
 
       const list = document.getElementById("order-list");
@@ -39,20 +41,32 @@
           `<div class="notice notice-error">불러오지 못했습니다: ${safe(error.message)}</div>`;
         return;
       }
-      if (!orders.length) {
+      if (!rows.length) {
         list.innerHTML = `<p class="empty">아직 결제한 상품이 없습니다.</p>`;
         return;
       }
 
-      list.innerHTML = orders.map((order) => `
-        <div class="order">
-          <div class="order-top">
-            <span class="order-name">${safe(order.product_name)}</span>
-            <span class="order-amount">${won(order.amount)}</span>
-          </div>
-          <div class="order-meta">${dateText(order.created_at)}</div>
-          <div class="order-meta">주문번호 ${safe(order.toss_order_id)}</div>
-        </div>`).join("");
+      // 한 주문에 여러 상품이 들어가므로 주문번호로 묶어서 한 덩어리로 보여준다.
+      const orders = groupOrders(rows);
+
+      list.innerHTML = orders.map((order) => {
+        const lines = order.lines.map((line) => `
+          <div class="order-item-line">
+            <span class="summary-name">${safe(line.product_name)} × ${line.quantity}</span>
+            <span class="summary-amount">${won(line.amount)}</span>
+          </div>`).join("");
+
+        return `
+          <div class="order">
+            <div class="order-top">
+              <span class="order-name">상품 ${order.lines.length}종</span>
+              <span class="order-amount">${won(order.total)}</span>
+            </div>
+            <div class="order-items">${lines}</div>
+            <div class="order-meta">${dateText(order.createdAt)}</div>
+            <div class="order-meta">주문번호 ${safe(order.tossOrderId)}</div>
+          </div>`;
+      }).join("");
     }
 
     main();

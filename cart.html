@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>장바구니 · 굿즈 샵</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header" id="header"></header>
+
+  <main class="container">
+    <h1 class="page-title">장바구니</h1>
+    <div id="message"></div>
+    <div class="cart-list" id="cart-list"></div>
+
+    <div id="footer-area" hidden>
+      <div class="cart-total">
+        <span class="cart-total-label">총 결제금액</span>
+        <span class="cart-total-amount" id="total-amount"></span>
+      </div>
+      <div id="limit-notice"></div>
+      <div class="stack">
+        <a class="button" href="checkout.html" id="order-link">주문하기</a>
+        <a class="button button-line" href="index.html">계속 쇼핑하기</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="common.js"></script>
+  <script src="cart.js"></script>
+  <script>
+    const message = document.getElementById("message");
+    const list = document.getElementById("cart-list");
+    const footer = document.getElementById("footer-area");
+
+    // 한 번에 살 수 있는 상품 종류. create-checkout 의 MAX_ITEMS 와 같아야 한다.
+    const MAX_TYPES = 20;
+
+    // 상품 정보를 담아두는 곳. 수량을 바꿀 때마다 DB 를 다시 읽지 않으려고 보관한다.
+    let products = new Map();
+
+    function showEmpty() {
+      list.innerHTML = `<p class="empty">장바구니가 비어 있습니다.</p>`;
+      footer.hidden = true;
+    }
+
+    // 화면을 다시 그린다.
+    // 여기 표시하는 금액은 안내용이다. 실제 청구 금액은 결제할 때 서버가 정한다.
+    function draw() {
+      const items = cartItems();
+      if (items.length === 0) {
+        showEmpty();
+        refreshCartCount();
+        return;
+      }
+
+      let total = 0;
+      list.innerHTML = items.map((item) => {
+        const product = products.get(item.productId);
+        if (!product) return "";
+        const lineTotal = product.price * item.quantity;
+        total += lineTotal;
+
+        return `
+          <div class="cart-item">
+            <img class="cart-item-image" src="${safe(product.image_url)}"
+                 alt="${safe(product.name)}" loading="lazy">
+            <div class="cart-item-body">
+              <p class="cart-item-name">${safe(product.name)}</p>
+              <p class="cart-item-price">${won(product.price)}</p>
+              <div class="cart-item-actions">
+                <div class="qty">
+                  <button class="qty-button" type="button" aria-label="수량 줄이기"
+                          data-minus="${product.id}" ${item.quantity <= 1 ? "disabled" : ""}>−</button>
+                  <span class="qty-value">${item.quantity}</span>
+                  <button class="qty-button" type="button" aria-label="수량 늘리기"
+                          data-plus="${product.id}" ${item.quantity >= 99 ? "disabled" : ""}>+</button>
+                </div>
+                <span class="cart-item-total">${won(lineTotal)}</span>
+              </div>
+              <div>
+                <button class="cart-remove" type="button" data-remove="${product.id}">삭제</button>
+              </div>
+            </div>
+          </div>`;
+      }).join("");
+
+      document.getElementById("total-amount").textContent = won(total);
+
+      // 한 번에 살 수 있는 상품 종류는 20가지까지다(서버도 같은 값으로 막는다).
+      // 서버에서만 막으면 사용자가 결제 화면에 가서야 거절당하고,
+      // 무엇을 빼야 하는지도 알 수 없다. 그래서 여기서 미리 알린다.
+      const tooMany = items.length > MAX_TYPES;
+      document.getElementById("limit-notice").innerHTML = tooMany
+        ? `<div class="notice notice-error">
+             상품 종류가 ${items.length}가지입니다.
+             한 번에 ${MAX_TYPES}가지까지만 살 수 있으니
+             ${items.length - MAX_TYPES}가지를 빼주세요.
+           </div>`
+        : "";
+      document.getElementById("order-link").hidden = tooMany;
+
+      footer.hidden = false;
+      refreshCartCount();
+    }
+
+    // 버튼이 많아 하나하나 연결하지 않고, 목록 전체에서 클릭을 한 번만 받는다.
+    list.addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button) return;
+
+      const plus = button.dataset.plus;
+      const minus = button.dataset.minus;
+      const remove = button.dataset.remove;
+
+      if (plus) {
+        const item = cartItems().find((i) => i.productId === Number(plus));
+        if (item) cartSetQty(item.productId, item.quantity + 1);
+      } else if (minus) {
+        const item = cartItems().find((i) => i.productId === Number(minus));
+        if (item) cartSetQty(item.productId, item.quantity - 1);
+      } else if (remove) {
+        cartRemove(Number(remove));
+      } else {
+        return;
+      }
+      draw();
+    });
+
+    async function main() {
+      await renderHeader("cart.html");
+
+      const items = cartItems();
+      if (items.length === 0) {
+        showEmpty();
+        return;
+      }
+
+      // 상품 정보를 한 번에 가져온다. 항목마다 따로 조회하지 않는다.
+      const { data, error } = await db
+        .from("products")
+        .select("id, name, image_url, price")
+        .in("id", items.map((item) => item.productId));
+
+      if (error) {
+        message.innerHTML =
+          `<div class="notice notice-error">상품을 불러오지 못했습니다: ${safe(error.message)}</div>`;
+        return;
+      }
+
+      products = new Map(data.map((product) => [product.id, product]));
+
+      // 장바구니에 담아둔 사이에 판매가 끝난 상품이 있을 수 있다.
+      // 그대로 두면 결제 단계에서 막히므로 여기서 빼주고 알린다.
+      const gone = items.filter((item) => !products.has(item.productId));
+      if (gone.length > 0) {
+        gone.forEach((item) => cartRemove(item.productId));
+        message.innerHTML = `<div class="notice notice-info">
+          판매가 끝난 상품 ${gone.length}개를 장바구니에서 뺐습니다.
+        </div>`;
+      }
+
+      draw();
+    }
+
+    main();
+  </script>
+</body>
+</html>

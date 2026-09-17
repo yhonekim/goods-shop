@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>결제 · 굿즈 샵</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header" id="header"></header>
+
+  <main class="container">
+    <h1 class="page-title">결제</h1>
+    <div id="message"></div>
+
+    <div id="checkout-area" hidden>
+      <div class="summary-list" id="summary"></div>
+
+      <!-- 토스 결제위젯이 그려지는 자리 -->
+      <div id="payment-method"></div>
+      <div id="agreement"></div>
+
+      <button class="button" id="pay-button" type="button" disabled>
+        불러오는 중...
+      </button>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- 토스 SDK 주소는 /v2 가 아니라 /v2/standard 다. /v2 는 403 이 난다. -->
+  <script src="https://js.tosspayments.com/v2/standard"></script>
+  <script src="config.js"></script>
+  <script src="common.js"></script>
+  <script src="cart.js"></script>
+  <script>
+    const message = document.getElementById("message");
+    const payButton = document.getElementById("pay-button");
+
+    function showError(text) {
+      message.innerHTML = `<div class="notice notice-error">${safe(text)}</div>`;
+    }
+
+    // 결제를 더 진행할 수 없을 때. 장바구니로 돌아갈 길을 꼭 같이 보여준다.
+    // 이 안내가 없으면 사용자가 무엇을 빼야 할지 모른 채 빈 화면에 갇힌다.
+    function showDeadEnd(text) {
+      message.innerHTML = `
+        <div class="notice notice-error">${safe(text)}</div>
+        <div class="stack">
+          <a class="button" href="cart.html">장바구니로 돌아가기</a>
+          <a class="button button-line" href="index.html">상품 보러가기</a>
+        </div>`;
+    }
+
+    // Edge Function 이 4xx/5xx 를 주면 본문에 이유가 담겨 있다.
+    async function readError(error) {
+      try {
+        return (await error.context.json()).error ?? error.message;
+      } catch (_) {
+        return error.message;
+      }
+    }
+
+    async function main() {
+      await renderHeader("cart.html");
+
+      // 결제는 로그인한 사람만 할 수 있다.
+      // 로그인하지 않았으면 로그인 페이지로 보내고, 로그인 후 이 페이지로 돌아온다.
+      const user = await requireLogin();
+      if (!user) return;
+
+      // 어디서 온 결제인지 정한다.
+      //  - 바로 구매: 상품 하나만
+      //  - 그 밖에: 장바구니 전체
+      const buyNow = new URLSearchParams(location.search).get("mode") === "buynow";
+      const buyNowItem = buyNow ? buyNowGet() : null;
+      const items = buyNow ? (buyNowItem ? [buyNowItem] : []) : cartItems();
+
+      if (items.length === 0) {
+        location.replace("cart.html");
+        return;
+      }
+
+      // 결제가 끝난 뒤 success.html 이 무엇을 정리할지 알 수 있게 남겨 둔다.
+      checkoutModeSet(buyNow ? "buynow" : "cart");
+
+      // 총액은 서버가 DB 가격으로 계산한다. 브라우저에서 계산한 값은 쓰지 않는다.
+      const { data: checkout, error } = await db.functions.invoke("create-checkout", {
+        body: { items },
+      });
+
+      if (error) {
+        // 여기서 막히는 흔한 이유는 담아둔 상품이 판매 종료된 경우다.
+        // 바로 구매였다면 그 항목을 지운다. 안 지우면 이 화면에 계속 갇힌다.
+        if (buyNow) buyNowClear();
+        showDeadEnd(await readError(error));
+        return;
+      }
+
+      // 주문 요약. 서버가 돌려준 값만 쓴다.
+      document.getElementById("summary").innerHTML =
+        checkout.items.map((item) => `
+          <div class="summary-row">
+            <span class="summary-name">${safe(item.name)} × ${item.quantity}</span>
+            <span class="summary-amount">${won(item.lineTotal)}</span>
+          </div>`).join("") + `
+          <div class="summary-row summary-sum">
+            <span class="summary-name">총 결제금액</span>
+            <span class="summary-amount">${won(checkout.totalAmount)}</span>
+          </div>`;
+
+      document.getElementById("checkout-area").hidden = false;
+
+      // ---- 토스 결제위젯 준비 ----
+      const tossPayments = TossPayments(TOSS_CLIENT_KEY);
+      // customerKey 는 유추하기 어려운 값이어야 한다. 로그인 사용자의 고유 id 를 쓴다.
+      const widgets = tossPayments.widgets({ customerKey: user.id });
+
+      // 금액 설정은 화면을 그리기 전에 먼저 해야 한다.
+      await widgets.setAmount({ currency: "KRW", value: checkout.totalAmount });
+
+      await Promise.all([
+        widgets.renderPaymentMethods({
+          selector: "#payment-method",
+          variantKey: "DEFAULT",
+        }),
+        widgets.renderAgreement({
+          selector: "#agreement",
+          variantKey: "AGREEMENT",
+        }),
+      ]);
+
+      payButton.disabled = false;
+      payButton.textContent = won(checkout.totalAmount) + " 결제하기";
+
+      payButton.addEventListener("click", async () => {
+        try {
+          await widgets.requestPayment({
+            // 주문번호에 checkouts 행의 id 를 넣는다. 승인 단계에서 이 id 로
+            // 무엇을 샀는지 확인하므로 브라우저가 내용을 바꿔치기할 수 없다.
+            orderId: "c-" + checkout.checkoutId,
+            orderName: checkout.orderName,
+            successUrl: pageUrl("success.html"),
+            failUrl: pageUrl("fail.html"),
+            customerEmail: user.email,
+          });
+        } catch (error) {
+          // 사용자가 결제창을 닫은 경우도 여기로 온다.
+          showError(error.message ?? "결제를 시작할 수 없습니다.");
+        }
+      });
+
+      // 장바구니는 여기서 비우지 않는다. 아직 승인 전이다.
+      // 승인이 확인된 뒤 success.html 이 비운다.
+    }
+
+    main().catch((error) => showError(error.message));
+  </script>
+</body>
+</html>
